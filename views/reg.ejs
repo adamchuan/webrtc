@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>飞翔的荷兰人</title>
+    <link rel="stylesheet" href="stylesheets/bootstrap.min.css">
+    <link rel="stylesheet" href="http://v3.bootcss.com/examples/signin/signin.css">
+  </head>
+  <body>
+     <div class="container">
+    
+      <form class="form-signin" role="form" method="post" action="reg">
+        <h2 class="form-signin-heading">Create an Account</h2>
+        <input type="text" name="email" class="form-control" placeholder="Email address" required autofocus>
+        <input type="text" name="nickname" class="form-control" placeholder="NickName" required>
+        <input type="password" name="pwd" class="form-control" placeholder="Password" required>
+      <% if(error){ %>
+        <label class="alert alert-danger">
+      <%=error%>
+        </label>
+        <%} %>
+        <button class="btn btn-lg btn-primary btn-block" type="submit">Sign in</button>
+      </form>
+
+    </div> <!-- /container -->
+  </body>
+ <script src="http://common.cnblogs.com/script/jquery.js"></script>
+ <script src = "javascripts/bootstrap.min.js"></script>
+</html>

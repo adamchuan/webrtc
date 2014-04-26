@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Document</title>
+	<script src="/socket.io/socket.io.js"></script>
+	<script src="javascripts/jquery.js"></script>
+	<script>
+		var socket = io.connect('/'); 
+		socket.on('message', function (data) { 
+			 data = JSON.parse(data); 
+			 $('#incomingChatMessages').append('<div class="'+data.type+'">' + data.message + 
+			'</div>'); 
+		}); 
+		socket.on('enter',function(data){
+			 data = JSON.parse(data); 
+			 $('#incomingChatMessages').append('<div class="'+data.type+'">' + data.message + 
+			'</div>'); 
+		});
+		$(function(){ 
+			 $('#send').click(function(){ 
+				 var data = { 
+					 message: $('#message').val(), 
+					 type:'userMessage' 
+				 }; 
+				 socket.send(JSON.stringify(data)); 
+				 $('#message').val(''); 
+			 }); 
+		});
+
+	</script>
+</head>
+<body>
+	<div class="main " style="border:1px solid black;width:400px; height:400px; overflow-y:scorll;">
+		<ul id="incomingChatMessages"></ul>
+	</div>
+	<input type='text' id="message" /> <input id="send" type = "button" value="发送"/>
+</body>
+</html>

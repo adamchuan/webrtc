@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>飞翔的荷兰人</title>
+    <link rel="shortcut icon" href="../../docs-assets/ico/favicon.png">
+    <link rel="stylesheet" href="stylesheets/bootstrap.min.css">
+    <link rel="stylesheet" href="stylesheets/signin.css">
+
+  </head>
+  <body>
+     <div class="container">
+
+      <form class="form-signin" role="form" method="post" action="login">
+        <h2 class="form-signin-heading">Please sign in</h2>
+        <input type="text" name="email" class="form-control" placeholder="Email address" required autofocus>
+        <input type="password" name="pwd" class="form-control" placeholder="Password" required>
+        <% if(error){ %>
+        <label class="alert alert-danger">
+			<%=error%>
+        </label>
+        <%}	%>
+        <label class="checkbox">
+          <input type="checkbox" value="remember-me"> Remember me
+        </label>
+        <button class="btn btn-lg btn-primary btn-block" type="submit">Sign in</button>
+        <a href="/reg" class="btn btn-lg btn-primary btn-block" >Register</a>
+      </form>
+	
+    </div> <!-- /container -->
+  </body>
+
+ <script src="http://common.cnblogs.com/script/jquery.js"></script>
+ <script src = "javascripts/bootstrap.min.js"></script>
+
+</html>

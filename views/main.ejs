@@ -1,0 +1,654 @@
+ <!doctype html>
+<html lang="zh">
+<head>
+	<meta charset="UTF-8">
+	<title>web-socket聊天</title>
+	 <link rel="stylesheet" href="stylesheets/bootstrap.min.css">
+	 <script src="javascripts/jquery.js"></script>
+	 <script src="/socket.io/socket.io.js"></script>
+    <script>
+    	var iosocket;
+    	var personalIo ; 
+    	var messageQueue = new Object();//用于储存未读的私人信息;
+    	var frameHash = new Object(); //申明一个用户对应的窗体的映射，表明这个窗口是否存在
+    	var videos = [];
+		var PeerConnection = window.PeerConnection || window.webkitPeerConnection00 || window.webkitRTCPeerConnection || window.mozRTCPeerConnection || window.RTCPeerConnection;
+		var iceServer = {
+	      "iceServers": [{
+	          "url": "stun:stun.l.google.com:19302"
+	      }]
+	    };
+
+		var ws = function(){
+
+		}
+
+		ws.publicSend = function(){
+	      	iosocket.send(JSON.stringify({
+            	type : "userMessage",
+            	message:$('#outgoingChatMessage').val(),
+            	formName: ws.myName
+            }));
+           
+            $('#incomingChatMessages').append($('<li></li>').text(ws.myName + ":" +$('#outgoingChatMessage').val()));
+            $('#outgoingChatMessage').val('');
+		}
+		ws.personalSend = function($msgBox){
+			var data = {
+					toId: $msgBox.parents('.frame').data('sid'),
+					formName :$("#name").text(),
+					message: $msgBox.val()
+			};
+			$msgBox.parent().prev().append("<li>" +ws.myName + ":" + data.message + "</li>");
+			personalIo.emit('pchat',data);
+			$msgBox.val('');
+		}
+		ws.sendAswer = function(event,agree,formId){
+
+			personalIo.emit("agree",{
+				value : agree,
+				toId : formId
+			});
+			if(agree){
+			    frameHash[formId].addVideoFrame('answer');
+			}else{
+				console.log("拒绝邀请");
+			}
+			var event = event || window.event,
+				src = event.target || event.srcElement;
+			$(src.parentNode).remove();
+		}
+
+        $(function(){
+            iosocket = io.connect('/public');
+
+            iosocket.on('connect', function () {
+            	console.log("公共频道连接成功");
+            /* 连接成功时向服务器发送他进入了房间*/	   
+
+            	//设置页面值
+            	ws.sid = iosocket.sessionid;
+            	ws.myName = $("#name").text();
+
+            	iosocket.emit("userenterroom",{
+            		name : ws.myName
+          		});
+            });
+
+            /* 初始化用户列表 */
+	    	iosocket.on("firstin",function(data){
+	    		console.log("初始化用户列表");
+	    		for(var user in data){
+	    			$("#userList").append('<div class="user" data-sid = "' + data[user].sid + '">' + data[user].name+'</div>');
+	    		}
+	    	});
+	    	/* 其他用户进入时候的监听 */
+            iosocket.on("userenterroom",function(data){
+            	$("#userList").append('<div class="user" data-sid="'+ data.sid +'">'+ data.name+'</div>');
+            	$('#incomingChatMessages').append($('<li></li>').text(data.name + "进入房间"));
+            });
+            /* 退出时触发 */
+            iosocket.on('disconnect', function() {
+                //$('#incomingChatMessages').append('<li>Disconnected</li>');
+                console.log("失去连接");
+                $("#userList .user").remove();
+            });
+
+            iosocket.on('userleaveroom',function(data){
+            	console.log(data.sid + "离开房间");
+            	$('#userList .user[data-sid=' + data.sid +']').remove();
+            });
+
+            iosocket.on('message', function(data) {
+            	data = JSON.parse(data);
+            	$('#incomingChatMessages').append($('<li></li>').text(data.formName + ":" + data.message));
+            });
+
+            $('#outgoingChatMessage').keypress(function(event) {
+                if(event.which == 13) {
+                    event.preventDefault();
+              		ws.publicSend();
+                }
+            });
+
+            /*--------------------personal ----------------------*/
+
+      
+			personalIo = io.connect('/personal');
+
+			personalIo.on('connect',function(){
+				console.log("私人频道已经连接上");
+			});
+			personalIo.on('disconnect',function(){
+				console.log("私人频道断开连接");
+			});
+			personalIo.on("offer",function(data){
+				var offerstr = "邀请您视频 <a onclick='ws.sendAswer(event,true,\""+data.formId+"\")'>同意</a> <a onclick='ws.sendAswer(event,false,\""+ data.formId +"\")'>拒绝</a>";
+	        	messageQueue[data.formId] = messageQueue[data.formId] || new Object() ;
+				messageQueue[data.formId].formName = data.formName;
+				messageQueue[data.formId].message = messageQueue[data.formId].message || [];
+				messageQueue[data.formId].message.push(offerstr);
+
+	        	if( typeof  frameHash[data.formId]=== "undefined" ){
+		 			  $("#userList .user[data-sid=" + data.formId +"]").addClass("haveMessage");		
+		 		}
+				else{
+		  			 $(frameHash[data.formId].chatpanel).append("<li>"+ offerstr +"</li>")
+				}
+			});
+			personalIo.on("agree",function(data){
+				console.log("收到agree");
+				if( typeof  frameHash[data.formId] !== "undefined" ){
+					if(!data.value){
+	        	 	 	$(frameHash[data.formId].chatpanel).append("<li>对方已经拒绝你的邀请</li>")
+	        	 	 	$(frameHash[data.formId].$videopanel).remove();
+			    	}else{
+		    			$(frameHash[data.formId].chatpanel).append("<li>对方已经接受你的邀请</li>")
+			    	}
+			    }
+			});
+			personalIo.on('pchat',function(data){
+				console.log("私人频道接收到消息");
+				
+				messageQueue[data.formId] = messageQueue[data.formId] || new Object() ;
+				messageQueue[data.formId].formName = data.formName;
+				messageQueue[data.formId].message = messageQueue[data.formId].message || [];
+				messageQueue[data.formId].message.push(data.message);
+				console.log(data);
+				if( typeof  frameHash[data.formId]=== "undefined" )
+				   $("#userList .user[data-sid=" + data.formId +"]").addClass("haveMessage");
+				else{
+				   $(frameHash[data.formId].chatpanel).append("<li>"+ data.formName+":"+data.message+"</li>")
+				}
+			
+			});
+		
+
+			$('#desk ').on("keypress", ".fc", function(event){
+			  	 if(event.which == 13) {
+                   	var event = event || window.event,
+						src = event.target || event.srcElement;
+					ws.personalSend($(src));
+				}
+			}).on('click','.fs',function(event){
+				  	var event = event || window.event,
+						src = event.target || event.srcElement;
+				 	ws.personalSend( $(src).prev() );
+					
+			}).on('click','.vs',function(event){
+					var event = event || window.event,
+						src = event.target || event.srcElement;
+					$src = $(src),
+				//	$chatpanel = $src.parent().prev();
+				//	Frame.addVideoFrame();
+				//	ws.sendOffer($src.parents('.frame').data('sid'));
+					frameHash[$src.parents('.frame').data('sid')].addVideoFrame('offer');
+			});
+			 	/*--------------------webRTC -------------------------*/
+           	personalIo.on('rtc',function(data){
+            	data = JSON.parse(data);
+            	console.log(data);
+            	handler = {
+			        '__offer':function(){
+			            console.log("接收到offer");
+			            frameHash[data.formId].pc.setRemoteDescription(new RTCSessionDescription(data.data.sdp));
+			            frameHash[data.formId].pc.createAnswer(function(desc){
+				       			frameHash[data.formId].pc.setLocalDescription(desc);
+				       			 personalIo.emit("rtc",JSON.stringify({ 
+					                  "event": "__answer",
+					                  "data": {
+					                      "sdp": desc
+					                  },
+					                  'toId' : data.formId
+				           		}));
+				     	   console.log("发送answer");
+				        });
+			  			
+			        },
+			        '__answer':function(){
+			        	console.log(data.formId);
+			        	console.log("接收到anwser");
+			            frameHash[data.formId].pc.setRemoteDescription(new RTCSessionDescription(data.data.sdp));
+			        },
+			        "__ready":function(){
+			        	console.log("收到ready");
+			        	frameHash[data.formId].pc.createOffer(function(desc){
+				             console.log("发送offer");
+				             frameHash[data.formId].pc.setLocalDescription(desc);
+				            	personalIo.emit("rtc",JSON.stringify({ 
+				                      "event": "__offer",
+				                      "data": {
+				                          "sdp": desc                        
+				                      },
+				                      "toId" :data.formId
+				             }));
+			        	});
+			        },
+			        '__leave': function(){
+
+			        },
+			        '__ice_candidate':function(){
+			            console.log("ice建立");
+			            frameHash[data.formId].pc.addIceCandidate(new RTCIceCandidate(data.data.candidate));
+			        } 
+			    }
+			    handler[data.event]();
+            });
+        });
+    </script>
+	<style>
+		body{
+			width: 100%;
+			height:1000px;
+		}
+	 	.panel{
+	 		border:1px solid black;
+	 		background: url(images/bg.png);
+	 		overflow-y:scroll;
+	 	}
+
+
+	 	.chatroomFrame{
+	 		border: 1px solid black;
+	 		overflow-y:scroll;
+	 		height: 600px;
+	 		background: -webkit-linear-gradient(top,rgb(92,167,186),#000);
+	 		background: -moz-linear-gradient(top,rgb(92,167,186),#000);
+	 	}
+	 	#incomingChatMessages{
+	 		font-size: 14px;
+	 		height: 530px;
+	 		color:#fff;
+	 	}
+	 	#userList{
+	 		height:400px;
+			
+	 	}
+	 	@keyframes myfirst{
+	 		from{
+	 			background:blue;
+	 		}
+	 		to{
+	 			background: #fff;
+	 		}
+		}
+
+		@-moz-keyframes myfirst /* Firefox */{
+			from{
+				background:blue;
+			}
+			to{
+				background: #fff;
+			}
+		}
+
+		@-webkit-keyframes myfirst /* Safari 和 Chrome */{
+			from{
+				background:blue;
+			}
+			to{
+				background: #fff;
+			}
+		}
+
+		@-o-keyframes myfirst /* Opera */{
+			from{
+				background:blue;
+			}
+			to{
+				background: #fff;
+			}
+		}
+	 	.panel .haveMessage{
+			animation: myfirst 1s linear infinite alternate;
+			-moz-animation: myfirst 1s linear infinite alternate;
+			-webkit-animation: myfirst 1s linear infinite alternate;
+			-o-animation: myfirst 1s linear infinite alternate;
+	 	}
+	 	.panel .user{
+	 		font-size: 14px;
+	 	}
+	 	.panel .user:hover{
+			background: #999;
+			cursor: pointer;
+	 	}
+	   .frame{
+	 		position: absolute;
+	 		left:30%;
+	 		top:3%;
+			border-radius: 5px;
+			padding : 10px;
+			background: rgb(96,143,159);
+	 	}
+	 	.frame .username{
+	 		font-size:16px;
+	 	}
+	 	.frame .title{
+	 		height: 40px;
+	 		line-height: 40px;
+	 		background: rgb(96,143,159);
+	 		color:rgb(251,178,23);
+	 		font-weight: bold;
+	 	}
+	 	.frame li{
+	 		list-style: none;
+	 	}
+	 	.frame .chatpanel{
+	 		position: relative;
+	 		overflow-y: scroll;
+	 		height: 400px;
+	 		background: url(../images/bg.png);
+	 		padding: 10px;
+	 		font-size: 16px;
+	 		line-height: 16px;
+	 	}
+	 	.frame .videopanel{
+	 		height:300px;
+	 		width:400px;
+	 		right:0px;
+	 		top:0px;
+	 		position: relative;
+	 	}
+	 	.frame .videopanel .videoframe{
+			width: 150px;
+			height: 150px;
+			float: left;
+	 	}
+	 	.frame .videopanel .mystream{
+			position: absolute;
+			left:0px;
+			bottom: 0px;
+			width: 100px;
+			height: 100px;
+	 	}
+		.frame .videopanel .yourstream{
+			width:300px;
+			height:300px;
+		}
+
+	 	.frame .messagebox{
+			border-top: 10px solid rgb(96,143,159);
+	 	}
+	</style>
+</head>
+<body onselectstart = "return false;" >
+
+<% if(success){
+	%>
+	<script>alert("注册成功")</script>
+	<%
+}
+%>
+	<div id="desk" class="jumbotron">	
+		<div class="panel-primary">
+		  <div class="panel-heading">
+		  		<span id="name" ><%=user.name%></span> 欢迎你
+		  </div>
+		  <div class="panel-body">
+
+		  		<div class="col-md-10" style="height:800px;">
+		  			<div class="panel-primary chatroomFrame">
+		  				<div class="panel-body" id="incomingChatMessages"></div>
+		  				<div class="panel-footer">
+		  					<div class="input-group">
+							  <input id="outgoingChatMessage" type="text" class="form-control">
+							  <span class="input-group-addon" onclick = 'ws.publicSend()'>发送</span>
+							</div>
+		  				</div>
+		  			</div>
+		  		</div>
+		  		<div class="col-md-2 panel" style="height:800px;">	
+			  		<div id="userList">
+				  		<div class="page-header small"> 在线用户</div>
+
+					</div>
+				</div>
+		   	
+		  </div>
+		</div>
+	</div>
+</body>
+
+ <script src = "javascripts/bootstrap.min.js"></script>
+<script>
+	document.onselectstart = function(){return false;} 
+
+	/*
+	  浏览器退出时执行的顺序是 onbeforeunload -》 onunload 
+	  所以直接在onunload中执行退出事想要的事件即可达到效果
+
+	window.onbeforeunload= function (){ 
+		 $.ajax({
+			   type: 'POST',  
+	        url: "/test",  
+	        data: {},  
+	        success: function (result) {  
+	        	console.log(result);
+	        },  
+       		dataType: "text",  
+        	error: function (result) {  
+           	    console.log(result); 
+        	}  
+		});  
+		return "真的要退出吗";
+	} 
+
+   ////////////////? 真正退出时候没有执行到这里 刷新时候执行了
+	window.onunload = function(){
+		 delCookie()
+		 $.ajax({
+			   type: 'POST',  
+	        url: "/logout",  
+	        data: {},  
+	        success: function (result) {  
+	        	console.log(result);
+	        },  
+       		dataType: "text",  
+        	error: function (result) {  
+           	    console.log(result); 
+        	}  
+		});  
+		return "";
+	}	
+	 */
+
+	var Frame =  function(name,sid){
+		//这是窗体参数
+		this.name = name;
+		this.sid = sid;
+		//创建整体窗体
+		this.window = document.createElement("div");
+		this.window.setAttribute("class","frame  col-md-4");
+		this.window.style.zIndex = ++Frame.topIndex;
+		this.window.name = name;
+		this.window.setAttribute("data-sid",this.sid);
+		//创建标题栏 
+		console.log(sid);
+		this.title = document.createElement("div");
+		this.title.innerHTML = '<span class="username ">和 ' + name + ' 的聊天</span>' ;
+		this.title.setAttribute("class","title");
+		//创建聊天面板
+		this.chatpanel = document.createElement("div");
+		this.chatpanel.setAttribute('class','chatpanel');
+		//创建输入框
+		this.messagebox = document.createElement('div');
+		this.messagebox.innerHTML = '<textarea class="form-control fc" rows="3"></textarea><button type="button" class="btn btn-default fs">发送</button><button type="button" class="btn btn-default vs" >视频聊天</button><button type="button" class="btn btn-default " onclick="frameHash[\''+sid+'\'].closeFrame()">关闭</button>';
+		this.messagebox.setAttribute('class','messagebox');
+
+
+		this.videopanel = document.createElement("div");
+		this.videopanel.innerHTML = "<div class='videoframe mystream'><video class='myvideo' autoplay width='100px' height='100px'></video></div><div class='videoframe yourstream'><video class='yourvideo' autoplay width='300px' height='300px'></video></div>"
+		this.videopanel.style.display = "none";
+		this.videopanel.setAttribute('class','videopanel');
+
+
+		this.window.appendChild(this.title);
+		this.window.appendChild(this.videopanel);
+		this.window.appendChild(this.chatpanel);
+		this.window.appendChild(this.messagebox);
+		document.getElementById("desk").appendChild(this.window);
+
+		//建立私人聊天频道
+		
+		//添加监听
+		this.addMoveLister();
+	}
+
+	Frame.topIndex = 0;//记录顶层frame的值
+
+	Frame.prototype.fillMessage = function(){
+		var str ="";
+		for(var i = 0;i < messageQueue[this.sid].message.length;i++){
+	
+			str += "<li>" + messageQueue[this.sid].formName + ":" + messageQueue[this.sid].message[i] + "</li>";
+		}
+		console.log(str);
+		this.chatpanel.innerHTML = str;
+	};
+
+	Frame.prototype.initPc = function(){
+		this.pc = new PeerConnection(iceServer);
+		var that = this;
+		this.pc.onaddstream = function(event){
+			console.log("接收到流了");
+
+			var $video = $(".yourvideo",$(that.videopanel));
+			console.log($video.length);  
+			var yourstream = URL.createObjectURL(event.stream);
+			console.log(yourstream);
+			$video.attr('src', yourstream);
+	   	};
+	    this.pc.onicecandidate = function(event){
+	          console.log(event.candidate);
+	          personalIo.emit("rtc",(JSON.stringify({
+	                      "event": "__ice_candidate",
+	                      "data": {
+	                          "candidate": event.candidate
+	                      },
+	                      "toId":that.sid
+	          })));
+	    };
+	}
+	Frame.prototype.addVideoFrame = function(isCall){
+		
+   		
+		var $chatpanel = $(this.chatpanel);
+		var that = this;
+		this.initPc();
+ 	   	navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia
+                   || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+
+		function successCallBack(stream){
+			
+			 console.log("生成视频聊天框");
+			 that.videopanel.style.display = "block";
+			 var $video = $(".myvideo",$(that.videopanel));  
+			 var localstream = URL.createObjectURL(stream);
+	   		 $video.attr('src', localstream);
+	   		 console.log("成功获取到本地视频");
+	   		 that.pc.addStream(stream);
+	   		 console.log(localstream);
+	   		 if(isCall == 'offer'){
+		   		 $chatpanel.append("<li>已邀请对方视频请等待</li>");
+		   		  personalIo.emit("offer",{
+		   	 	 	 'toId' : that.sid
+		   	 	 });
+		   	 }else{
+		   	 	 $chatpanel.append("<li>已经接受对方邀请</li>");
+		   	 	 personalIo.emit("rtc",JSON.stringify({
+		   	 	 	 'event' : '__ready',
+		   	 	 	 'toId' : that.sid
+		   	 	 }));
+		   	 }
+		}
+		function errorCallBack(error){
+			 console.log(error); 
+		}
+ 	    if (navigator.getUserMedia) {  
+       		 try{ 
+           		  navigator.getUserMedia({
+				      "audio": true,
+				      "video": true
+				   },successCallBack, errorCallBack);  
+       		 }catch(err){  
+            	navigator.getUserMedia({
+			      "audio": true,
+			      "video": true
+			    },successCallBack, errorCallBack);  
+        	}  
+  		}else{  
+  	      alert("navigator.getUserMedia  Error");  
+    	}  
+    
+	}
+	Frame.prototype.addMoveLister = function(){
+		var	downX,
+			downY,
+			offleft,
+			offtop,
+			frame = this,
+			moveItem = this.title,
+			parentElement = this.window;
+
+		this.moving =false;
+			moveItem.onmousedown = function(event){
+				console.log(parentElement);
+				var event = event || window.event;
+					downX = event.clientX;
+					downY = event.clientY;
+					offleft = parentElement.offsetLeft;
+					offtop =  parentElement.offsetTop;
+
+				frame.moving  = true;
+
+				frame.setTopFrame();
+		
+			}
+			moveItem.onmousemove = function(e){
+					if(frame.moving ){
+						var e = e || window.event;
+						parentElement.style.left = offleft + e.clientX - downX +"px";
+						parentElement.style.top = offtop + e.clientY - downY + "px";
+					}
+			}
+			document.onmouseup = function(){
+				frame.moving  = false;
+			}
+	}
+	Frame.prototype.setTopFrame = function(){
+		this.window.style.zIndex = ++Frame.topIndex;
+	}
+	Frame.createFrame = function(name,sid){
+		
+		var frame = new Frame(name,sid);
+		frameHash[sid] = frame;
+		
+	}
+	Frame.prototype.closeFrame = function(){
+		delete frameHash[this.sid];  //删除hash表中的引用
+		$(this.window).remove();
+	}
+	document.getElementById("userList").onclick = function(event){
+			var event = event || window.event,
+				src = event.target || event.srcElement,
+				$src = $(src);
+			if($src.hasClass("user")){
+				var username = $src.text(),
+					sid = $src.data("sid");
+
+				if(username != ws.myName){
+					if(typeof frameHash[sid] === 'undefined'){
+						Frame.createFrame(username,sid);
+						//如果有未读消息则取出未读消息
+						if($src.hasClass('haveMessage')){
+							frameHash[sid].fillMessage();
+							$src.removeClass("haveMessage");
+						}
+					}else{
+						frameHash(sid).setTopFrame();
+					}
+				}
+			}
+	}
+</script>
+</html>
